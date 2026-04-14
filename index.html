@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAP AI Assistant</title>
+
+<style>
+body{
+margin:0;
+font-family:Segoe UI, Arial;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364); 
+display:flex;
+justify-content:center;
+align-items:center;
+height:100dvh;
+}
+.chat{
+width:100%;
+max-width:420px;
+height:85dvh;
+background:rgba(255,255,255,0.08);
+backdrop-filter:blur(20px);
+border-radius:20px;
+box-shadow:0 10px 40px rgba(0,0,0,0.4);
+display:flex;
+flex-direction:column;
+overflow:hidden;
+}
+.header{
+padding:14px;
+text-align:center;
+font-weight:600;
+color:#fff;
+border-bottom:1px solid rgba(255,255,255,0.1);
+}
+.messages{
+flex:1;
+padding:12px;
+overflow-y:auto;
+}
+.msg{margin:10px 0;display:flex;}
+.user{justify-content:flex-end;}
+.bot{justify-content:flex-start;}
+.bubble{
+padding:10px 14px;
+border-radius:14px;
+max-width:80%;
+font-size:14px;
+line-height:1.4;
+}
+.user .bubble{background:#4facfe;color:#fff;}
+.bot .bubble{background:rgba(255,255,255,0.15);color:#fff;}
+.input{
+display:flex;
+padding:10px;
+gap:8px;
+border-top:1px solid rgba(255,255,255,0.1);
+}
+input{
+flex:1;
+padding:10px;
+border:none;
+border-radius:10px;
+outline:none;
+background:rgba(255,255,255,0.15);
+color:#fff;
+}
+button{
+background:#4facfe;
+color:#fff;
+border:none;
+padding:10px 16px;
+border-radius:10px;
+cursor:pointer;
+}
+.download{
+display:inline-block;
+margin-top:6px;
+padding:5px 8px;
+background:#00c853;
+color:#fff;
+text-decoration:none;
+border-radius:6px;
+font-size:12px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="chat">
+<div class="header">
+<img src="https://static.vecteezy.com/system/resources/previews/017/259/312/non_2x/apache-mascot-logo-free-vector.jpg"
+style="width:1cm;height:1cm;vertical-align:middle;margin-right:8px;">
+SAP AI Assistant
+</div>
+
+<div class="messages" id="msg"></div>
+
+<div class="input">
+<input id="input" placeholder="Ask SAP SD...">
+<button onclick="send()">Send</button>
+</div>
+</div>
+
+<script>
+
+/* 🔑 KEYWORDS */
+const downloadKeywords=["sop","manual","download","ppt","file"];
+
+/* 📂 FILES (✅ FIXED LINKS) */
+const filesData=[
+{
+file:"VL01N, VL02N, VL03",
+keywords:["delivery","vl01n"],
+en:"Create, Change, Display Delivery Document",
+link:"https://1drv.ms/w/c/bc822250b6d79da2/IQALib00jZTxQauQak5L8eNbATrSY94nD1YZ0c5Dp7UelE4?download=1"
+},
+{
+file:"VA01, VA02, VA03",
+keywords:["sales","order","va01"],
+en:"Create, Modify, Display Sales Order",
+link:"https://1drv.ms/w/c/bc822250b6d79da2/IQB3uB2qogNTQJUJhADy4gIMAU2QLjNM6bB-Qy67Pzrcl20?download=1"
+}
+];
+
+/* 📊 FLOWS */
+const data=[
+{
+file:"VL01N, VL02N, VL03N",
+keywords:["delivery","vl01n","dn"], 
+en:`Delivery Flow<br>
+VL01N Create<br>
+VL02N Change<br>
+VL03N Display`
+},
+{
+file:"VA01, VA02, VA03",
+keywords:["sales","order"],
+en:`Sales Order Flow<br>
+VA01 Create<br>
+VA02 Change<br>
+VA03 Display`
+}
+];
+
+const msg=document.getElementById("msg");
+const input=document.getElementById("input");
+
+let lastSuggestion=null;
+
+function add(text,type){
+let d=document.createElement("div");
+d.className="msg "+type;
+d.innerHTML=`<div class="bubble">${text}</div>`;
+msg.appendChild(d);
+msg.scrollTop=msg.scrollHeight;
+}
+
+/* SPELL CHECK */
+function editDistance(a,b){
+let matrix=[];
+for(let i=0;i<=b.length;i++){matrix[i]=[i];}
+for(let j=0;j<=a.length;j++){matrix[0][j]=j;}
+
+for(let i=1;i<=b.length;i++){
+for(let j=1;j<=a.length;j++){
+if(b[i-1]==a[j-1]) matrix[i][j]=matrix[i-1][j-1];
+else matrix[i][j]=Math.min(
+matrix[i-1][j-1]+1,
+matrix[i][j-1]+1,
+matrix[i-1][j]+1
+);
+}
+}
+return matrix[b.length][a.length];
+}
+
+function similarity(a,b){
+let longer=a.length>b.length?a:b;
+let shorter=a.length>b.length?b:a;
+return (longer.length - editDistance(longer,shorter)) / longer.length;
+}
+
+function getSuggestion(q){
+let words=[];
+data.forEach(d=>words.push(...d.keywords));
+filesData.forEach(f=>words.push(...f.keywords));
+
+let best=null,score=0;
+words.forEach(w=>{
+let s=similarity(q,w);
+if(s>score){score=s;best=w;}
+});
+
+if(score>0.5 && best!==q) return best;
+return null;
+}
+
+function findFlow(q){
+return data.filter(d=>d.keywords.some(k=>q.includes(k)));
+}
+
+function findFiles(q){
+return filesData.filter(f=>f.keywords.some(k=>q.includes(k)));
+}
+
+/* MAIN */
+async function send(){
+
+let q=input.value.trim();
+if(!q) return;
+
+add(q,"user");
+input.value="";
+
+let ql=q.toLowerCase();
+
+/* YES HANDLING */
+if(["yes","ok","y","s","sure"].includes(ql) && lastSuggestion){
+ql = lastSuggestion;
+lastSuggestion=null;
+}
+
+let isDownload = downloadKeywords.some(k=>ql.includes(k));
+let flow=findFlow(ql);
+
+/* 📥 ONLY DOWNLOAD */
+if(isDownload && !flow.length){
+let out="📂 Training Materials:<br><br>";
+
+filesData.forEach(f=>{
+out+=`<b>${f.file}</b><br>${f.en}<br>
+<a class="download" href="${f.link}" target="_blank">⬇ Download</a><br><br>`;
+});
+
+add(out,"bot");
+return;
+}
+
+/* ❌ NOT FOUND */
+if(!flow.length){
+let sug=getSuggestion(ql);
+
+if(sug){
+lastSuggestion=sug;
+
+add(`❓ Did you mean: 
+<span style="color:#4facfe;cursor:pointer"
+onclick="input.value='${sug}';send();">${sug}</span> ?
+<br><small>Type YES to confirm</small>`,"bot");
+
+}else{
+let loadingMsg = document.createElement("div");
+loadingMsg.className="msg bot";
+loadingMsg.innerHTML=`<div class="bubble">Thinking...</div>`;
+msg.appendChild(loadingMsg);
+msg.scrollTop=msg.scrollHeight;
+
+try {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: q })
+  });
+  const data = await res.json();
+  msg.removeChild(loadingMsg);
+  
+  if (data.response) {
+    let formattedText = data.response.replace(/\n/g, '<br>');
+    add(formattedText, "bot");
+  } else {
+    add("Sorry, I had trouble processing that request.", "bot");
+  }
+} catch (err) {
+  msg.removeChild(loadingMsg);
+  add("Hello! We support SAP SD training flow only, and I'm currently unable to connect to my AI brain.", "bot");
+}
+}
+return;
+}
+
+/* 📊 FLOW */
+let out="";
+flow.forEach(f=>{
+out+=`<b>${f.file}</b><br>${f.en}<br>`;
+});
+
+/* 📥 FLOW + DOWNLOAD */
+if(isDownload){
+let files=findFiles(ql);
+if(!files.length) files=filesData;
+
+files.forEach(f=>{
+out+=`<a class="download" href="${f.link}" target="_blank">
+⬇ Download ${f.file}</a><br><br>`;
+});
+}
+
+add(out,"bot");
+}
+
+input.addEventListener("keypress",e=>{
+if(e.key==="Enter") send();
+});
+
+</script>
+
+</body>
+</html>
