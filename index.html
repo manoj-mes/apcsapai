@@ -90,7 +90,11 @@ font-size:12px;
 <body>
 
 <div class="chat">
-<div class="header">SAP AI Assistant</div>
+<div class="header">
+<img src="https://static.vecteezy.com/system/resources/previews/017/259/312/non_2x/apache-mascot-logo-free-vector.jpg"
+style="width:1cm;height:1cm;vertical-align:middle;margin-right:8px;">
+SAP AI Assistant
+</div>
 
 <div class="messages" id="msg"></div>
 
@@ -102,56 +106,71 @@ font-size:12px;
 
 <script>
 
-const API_KEY = "YOUR_GEMINI_API_KEY"; // 🔑 add your key
+/* 🔑 KEYWORDS */
+const downloadKeywords=["sop","manual","download","ppt","file"];
+
+/* 📂 FILES */
+const filesData=[
+{
+file:"VL01N, VL02N, VL03",
+keywords:["delivery","vl01n"],
+en:"Create, Change, Display Delivery Document",
+link:"https://1drv.ms/w/c/bc822250b6d79da2/IQALib00jZTxQauQak5L8eNbATrSY94nD1YZ0c5Dp7UelE4?download=1"
+},
+{
+file:"VA01, VA02, VA03",
+keywords:["sales","order","va01"],
+en:"Create, Modify, Display Sales Order",
+link:"https://1drv.ms/w/c/bc822250b6d79da2/IQB3uB2qogNTQJUJhADy4gIMAU2QLjNM6bB-Qy67Pzrcl20?download=1"
+}
+];
+
+/* 📊 FLOWS */
+const data=[
+{
+file:"VL01N, VL02N, VL03N",
+keywords:["delivery","vl01n","dn"],
+en:`Delivery Flow<br>
+VL01N Create<br>
+VL02N Change<br>
+VL03N Display`
+},
+{
+file:"VA01, VA02, VA03",
+keywords:["sales","order"],
+en:`Sales Order Flow<br>
+VA01 Create<br>
+VA02 Change<br>
+VA03 Display`
+}
+];
 
 const msg=document.getElementById("msg");
 const input=document.getElementById("input");
 
-/* 💾 LOAD HISTORY */
-window.onload = () => {
-  const history = JSON.parse(localStorage.getItem("chatHistory") || "[]");
-  history.forEach(m => add(m.text, m.type, false));
-};
-
-/* 💾 SAVE HISTORY */
-function save(text,type){
-  let history = JSON.parse(localStorage.getItem("chatHistory") || "[]");
-  history.push({text,type});
-  localStorage.setItem("chatHistory", JSON.stringify(history));
-}
+let lastSuggestion=null;
 
 /* 💬 ADD MESSAGE */
-function add(text,type,saveIt=true){
+function add(text,type){
 let d=document.createElement("div");
 d.className="msg "+type;
 d.innerHTML=`<div class="bubble">${text}</div>`;
 msg.appendChild(d);
 msg.scrollTop=msg.scrollHeight;
-if(saveIt) save(text,type);
 }
 
-/* ⌨️ TYPING EFFECT */
-function typeText(text){
-let d=document.createElement("div");
-d.className="msg bot";
-let bubble=document.createElement("div");
-bubble.className="bubble";
-d.appendChild(bubble);
-msg.appendChild(d);
-
-let i=0;
-let interval=setInterval(()=>{
-  bubble.innerHTML += text.charAt(i);
-  i++;
-  msg.scrollTop=msg.scrollHeight;
-  if(i>=text.length) clearInterval(interval);
-},15);
-
-save(text,"bot");
+/* 🔍 FIND FLOW */
+function findFlow(q){
+return data.filter(d=>d.keywords.some(k=>q.includes(k)));
 }
 
-/* 🚀 SEND */
-async function send(){
+/* 🔍 FIND FILES */
+function findFiles(q){
+return filesData.filter(f=>f.keywords.some(k=>q.includes(k)));
+}
+
+/* 🚀 MAIN */
+function send(){
 
 let q=input.value.trim();
 if(!q) return;
@@ -159,54 +178,49 @@ if(!q) return;
 add(q,"user");
 input.value="";
 
-/* loading */
-let loading=document.createElement("div");
-loading.className="msg bot";
-loading.innerHTML=`<div class="bubble">Typing...</div>`;
-msg.appendChild(loading);
-msg.scrollTop=msg.scrollHeight;
+let ql=q.toLowerCase();
 
-try{
+/* DOWNLOAD CHECK */
+let isDownload = downloadKeywords.some(k=>ql.includes(k));
+let flow=findFlow(ql);
 
-const res = await fetch(
-"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key="+API_KEY,
-{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-contents:[
-{
-parts:[{
-text:`You are an SAP SD expert assistant.
+/* 📥 ONLY DOWNLOAD */
+if(isDownload && !flow.length){
+let out="📂 Training Materials:<br><br>";
 
-Rules:
-- Answer only SAP SD related queries
-- Be short and clear
-- Provide step-by-step when needed
-- If not SAP, say: "I support SAP SD topics only"
+filesData.forEach(f=>{
+out+=`<b>${f.file}</b><br>${f.en}<br>
+<a class="download" href="${f.link}" target="_blank">⬇ Download</a><br><br>`;
+});
 
-User: ${q}`
-}]
+add(out,"bot");
+return;
 }
-]
-})
+
+/* ❌ NOT FOUND */
+if(!flow.length){
+add("❌ No data found. Try: delivery, sales order, VA01, VL01N","bot");
+return;
 }
-);
 
-const data = await res.json();
-msg.removeChild(loading);
+/* 📊 FLOW */
+let out="";
+flow.forEach(f=>{
+out+=`<b>${f.file}</b><br>${f.en}<br>`;
+});
 
-let aiText =
-data.candidates?.[0]?.content?.parts?.[0]?.text ||
-"No response";
+/* 📥 FLOW + DOWNLOAD */
+if(isDownload){
+let files=findFiles(ql);
+if(!files.length) files=filesData;
 
-/* typing animation */
-typeText(aiText.replace(/\n/g,"<br>"));
-
-}catch(e){
-msg.removeChild(loading);
-add("AI error. Try again.","bot");
+files.forEach(f=>{
+out+=`<a class="download" href="${f.link}" target="_blank">
+⬇ Download ${f.file}</a><br><br>`;
+});
 }
+
+add(out,"bot");
 }
 
 /* ENTER KEY */
